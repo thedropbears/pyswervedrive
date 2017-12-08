@@ -4,12 +4,8 @@ import math
 
 class SwerveChassis:
 
-    module_a = SwerveModule
-    module_b = SwerveModule
-    module_c = SwerveModule
-    module_d = SwerveModule
-
     bno055 = BNO055
+    modules = []
 
     # multiply both by vz and the number that you need to multiply the vz
     # components by to get them in the appropriate directions
@@ -19,9 +15,6 @@ class SwerveChassis:
         self.vy = 0
         self.vz = 0
         self.field_oriented = True
-
-    def setup(self):
-        self.modules = [self.module_a, self.module_b, self.module_c, self.module_d]
 
     def execute(self):
         for module in self.modules:
