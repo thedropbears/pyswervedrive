@@ -38,7 +38,7 @@ class SwerveModule:
         self.steer_motor.set(self.steer_motor.getPosition())
 
         # The VEX Integrated encoders have 1 count per revolution, and there
-        # is a 1:1 corrospondence to the angular position of the module.
+        # is a 1:1 correspondence to the angular position of the module.
         self.steer_counts_per_radian = 1.0 / (2.0 * math.pi)
 
         self.drive_motor = CANTalon(self.cfg.drive_talon_id)
@@ -80,11 +80,11 @@ class SwerveModule:
 
         # calculate straight line velocity and angle of motion
         velocity = math.sqrt(self.vx**2 + self.vy**2)
-        direction = constrain_angle(math.atan2(self.vy, self.vx))
+        desired_azimuth = constrain_angle(math.atan2(self.vy, self.vx))
 
         # if we have a really low velocity, don't do anything. This is to
         # prevent stuff like joystick whipping back and changing the module
-        # direction
+        # azimuth
         if velocity < 0.01:
             return
 
@@ -92,31 +92,31 @@ class SwerveModule:
             # Calculate a delta to from the module's current setpoint (wrapped
             # to between +-pi), representing required rotation to get to our
             # desired angle
-            delta = constrain_angle(direction - self.module_sp_radians)
+            delta = constrain_angle(desired_azimuth - self.current_azimuth)
         else:
             # TODO: Test this code path on the actual robot (we have only tested absolute mode)
 
-            # figure out the most efficient way to get the module to the desired direction
-            current_heading = constrain_angle(self.module_sp_radians)
-            delta = self.min_angular_displacement(current_heading, direction)
+            # figure out the most efficient way to get the module to the desired azimuth
+            current_unwound_azimuth = constrain_angle(self.current_azimuth)
+            delta = self.min_angular_displacement(current_unwound_azimuth, desired_azimuth)
 
         # Please note, this is *NOT WRAPPED* to +-pi, because if wrapped the module
         # will unwind
-        direction_to_set_radians = (self.module_sp_radians+delta)
-        # convert the direction to encoder counts to set as the closed-loop setpoint
-        direction_to_set = (direction_to_set_radians * self.steer_counts_per_radian
+        azimuth_to_set = (self.current_azimuth+delta)
+        # convert the azimuth to encoder counts to set as the closed-loop setpoint
+        setpoint = (azimuth_to_set * self.steer_counts_per_radian
                 + self.cfg.steer_enc_offset)
-        self.steer_motor.set(direction_to_set)
+        self.steer_motor.set(setpoint)
 
 
         if not self.absolute_rotation:
             # logic to only move the modules when we are close to the corret angle
             # TODO: Test this code path on the actual robot (we have only tested absolute mode)
-            direction_error = constrain_angle(self.module_sp_radians - direction)
-            if abs(direction_error) < math.pi / 6.0:
+            azimuth_error = constrain_angle(self.current_azimuth - desired_azimuth)
+            if abs(azimuth_error) < math.pi / 6.0:
                 # if we are nearing the correct angle with the module forwards
                 self.drive_motor.set(velocity*self.drive_velocity_to_native_units)
-            elif abs(direction_error) > math.pi - math.pi / 6.0 and not self.absolute_rotation:
+            elif abs(azimuth_error) > math.pi - math.pi / 6.0 and not self.absolute_rotation:
                 # if we are nearing the correct angle with the module backwards
                 self.drive_motor.set(-velocity*self.drive_velocity_to_native_units)
             else:
@@ -125,9 +125,8 @@ class SwerveModule:
             self.drive_motor.set(velocity*self.drive_velocity_to_native_units)
 
     @property
-    def module_sp_radians(self):
-        """Read the current direction from the controller setpoint, and convert
-        to radians"""
+    def current_azimuth(self):
+        """Return the current azimuth from the controller setpoint in radians."""
         setpoint = self.steer_motor.getSetpoint()
         return float(setpoint - self.cfg.steer_enc_offset) / self.steer_counts_per_radian
 
