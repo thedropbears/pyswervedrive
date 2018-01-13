@@ -1,4 +1,4 @@
-from ctre import CANTalon
+from ctre.wpi_talonsrx import WPI_TalonSRX
 import math
 
 
@@ -19,7 +19,7 @@ class SwerveModule:
     # 0.1 is because SRX velocities are measured in ticks/100ms
     drive_velocity_to_native_units = drive_counts_per_metre*0.1
 
-    def __init__(self, steer_talon: CANTalon, drive_talon: CANTalon,
+    def __init__(self, steer_talon: WPI_TalonSRX, drive_talon: WPI_TalonSRX,
                  steer_enc_offset: float, x_pos: float, y_pos: float,
                  drive_free_speed: float,
                  reverse_steer_direction: bool=True,
@@ -42,22 +42,26 @@ class SwerveModule:
         self.vx = 0
         self.vy = 0
 
-        self.steer_motor.setControlMode(CANTalon.ControlMode.Position)
-        self.steer_motor.setFeedbackDevice(CANTalon.FeedbackDevice.CtreMagEncoder_Absolute)
+        self.steer_motor.configFeedbackDevice(WPI_TalonSRX.FeedbackDevice.CtreMagEncoder_Absolute)
         # changes sign of motor throttle vilues
         self.steer_motor.reverseOutput(self.reverse_steer_direction)
         # changes direction of motor encoder
-        self.steer_motor.reverseSensor(self.reverse_steer_encoder)
-        self.steer_motor.setPID(1.0, 0.0002, 0.0)
+        self.steer_motor.SetInverted(self.reverse_steer_encoder)
+        self.steer_motor.config_kP(1.0, 10)
+        self.steer_motor.config_kI(0.0002, 10)
+        self.steer_motor.config_kD(0.0, 10)
         self.reset_steer_setpoint()
 
-        self.drive_motor.setControlMode(CANTalon.ControlMode.Speed)
-        self.drive_motor.setFeedbackDevice(CANTalon.FeedbackDevice.QuadEncoder)
+        self.drive_motor.configControlMode(WPI_TalonSRX.ControlMode.Velocity)
+        self.drive_motor.configFeedbackDevice(WPI_TalonSRX.FeedbackDevice.QuadEncoder)
         # changes sign of motor throttle values
         self.drive_motor.reverseOutput(self.reverse_drive_direction)
         # changes direction of motor encoder
-        self.drive_motor.reverseSensor(self.reverse_drive_encoder)
-        self.drive_motor.setPID(1.0, 0.0, 0.0, 1024.0/self.drive_free_speed)
+        self.drive_motor.SetInverted(self.reverse_drive_encoder)
+        self.steer_motor.config_kP(1.0, 10)
+        self.steer_motor.config_kI(0.0, 10)
+        self.steer_motor.config_kD(0.0, 100)
+        self.steer_motor.config_kF(1024.0/self.drive_free_speed, 10)
 
         self.reset_encoder_delta()
 
@@ -74,7 +78,7 @@ class SwerveModule:
 
         This prevents the module unwinding on start.
         """
-        self.steer_motor.set(self.steer_motor.getPosition())
+        self.steer_motor.set(WPI_TalonSRX.ControlMode.Position, self.steer_motor.getSelectedSensorPosition())
 
     def reset_encoder_delta(self):
         """Re-zero the encoder deltas as returned from
@@ -83,7 +87,7 @@ class SwerveModule:
         odometry.
         """
         self.zero_azimuth = self.current_azimuth
-        self.zero_drive_pos = (self.drive_motor.getPosition()
+        self.zero_drive_pos = (self.drive_motor.getSelectedSensorPosition()
                                / self.drive_counts_per_metre)
 
     def get_encoder_delta(self):
@@ -93,7 +97,7 @@ class SwerveModule:
         odometry.
         """
         steer_delta = self.zero_azimuth - self.last_steer_pos
-        drive_delta = self.zero_drive_pos - (self.drive_motor.getPosition()
+        drive_delta = self.zero_drive_pos - (self.drive_motor.getSelectedSensorPosition()
                                              / self.drive_counts_per_metre)
         return steer_delta, drive_delta
 
@@ -133,26 +137,26 @@ class SwerveModule:
         # convert the direction to encoder counts to set as the closed-loop setpoint
         setpoint = (azimuth_to_set * self.STEER_COUNTS_PER_RADIAN
                     + self.steer_enc_offset)
-        self.steer_motor.set(setpoint)
+        self.steer_motor.set(WPI_TalonSRX.ControlMode.Position, setpoint)
 
         if not self.absolute_rotation:
             # logic to only move the modules when we are close to the corret angle
             azimuth_error = constrain_angle(self.current_azimuth - desired_azimuth)
             if abs(azimuth_error) < math.pi / 6.0:
                 # if we are nearing the correct angle with the module forwards
-                self.drive_motor.set(velocity*self.drive_velocity_to_native_units)
+                self.drive_motor.set(WPI_TalonSRX.ControlMode.Velocity, velocity*self.drive_velocity_to_native_units)
             elif abs(azimuth_error) > math.pi - math.pi / 6.0:
                 # if we are nearing the correct angle with the module backwards
-                self.drive_motor.set(-velocity*self.drive_velocity_to_native_units)
+                self.drive_motor.set(WPI_TalonSRX.ControlMode.Velocity, -velocity*self.drive_velocity_to_native_units)
             else:
-                self.drive_motor.set(0)
+                self.drive_motor.set(WPI_TalonSRX.ControlMode.Velocity, 0)
         else:
-            self.drive_motor.set(velocity*self.drive_velocity_to_native_units)
+            self.drive_motor.set(WPI_TalonSRX.ControlMode.Velocity, velocity*self.drive_velocity_to_native_units)
 
     @property
     def current_azimuth(self):
         """Return the current azimuth from the controller setpoint in radians."""
-        setpoint = self.steer_motor.getSetpoint()
+        setpoint = self.steer_motor.getClosedLoopTarget()
         return float(setpoint - self.steer_enc_offset) / self.STEER_COUNTS_PER_RADIAN
 
     @staticmethod
